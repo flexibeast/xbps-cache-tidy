@@ -7,4 +7,4 @@ longer required:
 # ./xbps-cache-tidy --keep 3 --verbose
 ```
 
-The value for `keep` specifies how many versions to retain.
+The value for `keep` specifies how many versions to retain. The default is 3.
