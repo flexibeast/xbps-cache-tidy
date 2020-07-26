@@ -1,0 +1,102 @@
+#!/bin/perl
+
+use strict;
+use warnings;
+
+use Getopt::Long;
+
+my $usage .= "Options:\n";
+$usage .= "  --keep <count>\n";
+$usage .= "    Number of versions to keep\n";
+$usage .= "  --verbose\n";
+$usage .= "    Output status information\n";
+
+my $keep_quantity = 3;
+
+my $length = 24;
+my $verbose;
+GetOptions ("keep=i" => \$keep_quantity,
+            "verbose"  => \$verbose)
+    or die($usage);
+
+if ($keep_quantity < 1) { die "Value of 'keep' must be 1 or greater.\n"; }
+if ($verbose) { print "Keeping $keep_quantity versions.\n"; }
+
+my $arch = `xbps-uhelper arch`;
+chomp $arch;
+
+my $cachedir = '/home/alexis/var/cache/xbps/';
+if ($verbose) { print "Getting file list ... "; }
+my $file_list = `ls $cachedir/*.xbps`;
+if ($verbose) { print "done\n"; }
+my @files = split('\n',$file_list);
+
+my @package_names_and_versions;
+my %package_names;
+if ($verbose) { print "Compiling file and package information ... "; }
+foreach my $file (@files) {
+
+    my $name_and_version;
+    my $name;
+    my $version;
+    my %version_hash;
+
+    $file =~ m|/([^/]+)\.$arch\.xbps$|;
+    $name_and_version = $1;
+    push @package_names_and_versions, $name_and_version;
+    $name = `xbps-uhelper getpkgname $name_and_version`;
+    chomp $name;
+    $version = `xbps-uhelper getpkgversion $name_and_version`;
+    chomp $version;
+    $package_names{$name}{$version} = 1;
+
+}
+if ($verbose) { print "done\n"; }
+
+foreach my $package (sort keys %package_names) {
+
+    my @versions;
+    my @sorted;
+    my @removable;
+    my $limit;
+    my $file_name;
+    my $file_signature;
+
+    unless (keys %{$package_names{$package}} <= $keep_quantity) {
+
+        select STDOUT; # Ensure previous output is flushed
+
+        @versions = keys %{$package_names{$package}};
+        @sorted = sort compare_versions @versions;
+        $limit = (scalar @sorted) - $keep_quantity - 1;
+        @removable = @sorted[0..$limit];
+
+        if ($verbose) { print "Removing old versions of $package ... " };
+
+        foreach my $version (@removable) {
+
+            $file_name = "${cachedir}${package}-$version.$arch.xbps" ;
+            $file_signature = $file_name . ".sig";
+            unlink $file_name or die "Couldn't remove $file_name: $!\n";
+
+        }
+
+        if ($verbose) { print "done\n"; }
+
+    }
+
+}
+
+sub compare_versions {
+
+    `xbps-uhelper cmpver $a $b`;
+    if ($? == 65280) {
+        return -1;
+    } elsif ($? == 256) {
+        return 1;
+    } else {
+        return 0;
+    }
+
+}
+
